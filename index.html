@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SwiftShip - Reliable Package Delivery</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="stylesheet" href="css/style.css" />
+    <!-- Smartsupp Live Chat script -->
+    <script type="text/javascript">
+      var _smartsupp = _smartsupp || {};
+      _smartsupp.key = "3686506deaced07401b79b1223cabe24f8d715b5";
+      window.smartsupp ||
+        (function (d) {
+          var s,
+            c,
+            o = (smartsupp = function () {
+              o._.push(arguments);
+            });
+          o._ = [];
+          s = d.getElementsByTagName("script")[0];
+          c = d.createElement("script");
+          c.type = "text/javascript";
+          c.charset = "utf-8";
+          c.async = true;
+          c.src = "https://www.smartsuppchat.com/loader.js?";
+          s.parentNode.insertBefore(c, s);
+        })(document);
+    </script>
+  </head>
+  <body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+      <div class="container">
+        <a class="navbar-brand" href="#">
+          <i class="fas fa-shipping-fast me-2"></i>SwiftShip
+        </a>
+        <button
+          class="navbar-toggler"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#navbarNav">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav ms-auto">
+            <li class="nav-item">
+              <a class="nav-link active" href="#">Home</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="#services">Services</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="#tracking">Track</a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero-section">
+      <div class="container">
+        <div class="row align-items-center">
+          <div class="col-lg-6">
+            <h1>Fast & Reliable Package Delivery</h1>
+            <p class="lead">
+              Track your shipments in real-time with our advanced logistics
+              platform.
+            </p>
+            <div class="tracking-form">
+              <h4>Track Your Package</h4>
+              <div class="input-group mb-3">
+                <input
+                  type="text"
+                  id="tracking-number"
+                  class="form-control"
+                  placeholder="Enter tracking number" />
+                <button class="btn btn-primary" onclick="trackPackage()">
+                  Track
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-6">
+            <img
+              src="/delivery_illustration.png"
+              alt="Delivery Illustration"
+              class="img-fluid" />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Services Section -->
+    <section id="services" class="py-5 bg-light">
+      <div class="container">
+        <h2 class="text-center mb-5">Our Services</h2>
+        <div class="row">
+          <div class="col-md-4 mb-4">
+            <div class="card service-card h-100">
+              <div class="card-body text-center">
+                <i class="fas fa-shipping-fast service-icon"></i>
+                <h5 class="card-title">Express Delivery</h5>
+                <p class="card-text">
+                  Next day delivery for urgent packages across the country.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4 mb-4">
+            <div class="card service-card h-100">
+              <div class="card-body text-center">
+                <i class="fas fa-warehouse service-icon"></i>
+                <h5 class="card-title">Warehouse Storage</h5>
+                <p class="card-text">
+                  Secure storage solutions for your goods and inventory.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4 mb-4">
+            <div class="card service-card h-100">
+              <div class="card-body text-center">
+                <i class="fas fa-globe service-icon"></i>
+                <h5 class="card-title">International Shipping</h5>
+                <p class="card-text">
+                  Reliable global shipping with real-time tracking.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tracking Section -->
+    <section id="tracking" class="py-5">
+      <div class="container">
+        <div class="row justify-content-center">
+          <div class="col-lg-8">
+            <h2 class="text-center mb-4">Track Your Shipment</h2>
+            <div class="card shadow">
+              <div class="card-body">
+                <form id="tracking-form">
+                  <div class="mb-3">
+                    <label for="tracking-id" class="form-label"
+                      >Tracking Number</label
+                    >
+                    <input
+                      type="text"
+                      class="form-control"
+                      id="tracking-id"
+                      required />
+                  </div>
+                  <button type="submit" class="btn btn-primary w-100">
+                    <i class="fas fa-search me-2"></i>Track Package
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-white py-4">
+      <div class="container">
+        <div class="row">
+          <div class="col-md-4 mb-3">
+            <h5>SwiftShip</h5>
+            <p>
+              Reliable logistics and package delivery solutions for businesses
+              and individuals.
+            </p>
+          </div>
+          <div class="col-md-4 mb-3">
+            <h5>Quick Links</h5>
+            <ul class="list-unstyled">
+              <li><a href="#" class="text-white">Home</a></li>
+              <li><a href="#services" class="text-white">Services</a></li>
+              <li><a href="#tracking" class="text-white">Track Shipment</a></li>
+            </ul>
+          </div>
+          <div class="col-md-4 mb-3">
+            <h5>Contact Us</h5>
+            <p><i class="fas fa-phone me-2"></i> (123) 456-7890</p>
+            <p><i class="fas fa-envelope me-2"></i> info@swiftship.com</p>
+          </div>
+        </div>
+        <hr />
+        <div class="text-center">
+          <p class="mb-0">&copy; 2025 SwiftShip. All rights reserved.</p>
+        </div>
+      </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+    <script src="js/tracking.js"></script>
+  </body>
+</html>

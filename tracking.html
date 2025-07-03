@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Track Your Shipment | SwiftShip</title>
+    <!-- Bootstrap CSS -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet" />
+    <!-- Font Awesome -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <!-- Leaflet CSS (OpenStreetMap) -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+      /* Map Container */
+      #map {
+        height: 400px;
+        width: 100%;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        z-index: 1;
+      }
+      /* Timeline Styling */
+      .timeline {
+        position: relative;
+        padding-left: 30px;
+      }
+      .timeline::before {
+        content: "";
+        position: absolute;
+        left: 10px;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: #dee2e6;
+      }
+      .timeline-item {
+        position: relative;
+        padding-bottom: 20px;
+      }
+      .timeline-item::before {
+        content: "";
+        position: absolute;
+        left: -30px;
+        top: 0;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #adb5bd;
+        border: 3px solid #fff;
+      }
+      .timeline-item.active::before {
+        background: #0d6efd;
+      }
+      .timeline-date {
+        font-size: 0.85rem;
+        color: #6c757d;
+      }
+      /* Legend for Map */
+      .map-legend {
+        background: white;
+        padding: 10px;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      }
+    </style>
+
+    <!-- Smartsupp Live Chat script -->
+    <script type="text/javascript">
+      var _smartsupp = _smartsupp || {};
+      _smartsupp.key = "3686506deaced07401b79b1223cabe24f8d715b5";
+      window.smartsupp ||
+        (function (d) {
+          var s,
+            c,
+            o = (smartsupp = function () {
+              o._.push(arguments);
+            });
+          o._ = [];
+          s = d.getElementsByTagName("script")[0];
+          c = d.createElement("script");
+          c.type = "text/javascript";
+          c.charset = "utf-8";
+          c.async = true;
+          c.src = "https://www.smartsuppchat.com/loader.js?";
+          s.parentNode.insertBefore(c, s);
+        })(document);
+    </script>
+  </head>
+  <body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary sticky-top">
+      <div class="container">
+        <a class="navbar-brand" href="index.html">
+          <i class="fas fa-shipping-fast me-2"></i>SwiftShip
+        </a>
+        <div class="d-flex">
+          <form id="tracking-form" class="d-flex">
+            <input
+              id="tracking-id"
+              class="form-control me-2"
+              type="search"
+              placeholder="Enter tracking number"
+              aria-label="Track" />
+            <button class="btn btn-light" type="submit">
+              <i class="fas fa-search"></i>
+            </button>
+          </form>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Tracking Results -->
+    <main class="container my-5">
+      <div class="row justify-content-center">
+        <div class="col-lg-10">
+          <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+              <h4 class="mb-0">Shipment Tracking</h4>
+            </div>
+            <div class="card-body">
+              <div id="tracking-results">
+                <div class="text-center py-5">
+                  <i class="fas fa-box-open fa-4x text-muted mb-3"></i>
+                  <h5>Enter a tracking number to view shipment details</h5>
+                  <a href="index.html" class="btn btn-primary mt-3"
+                    >Back to Home</a
+                  >
+                </div>
+              </div>
+
+              <div id="tracking-details" class="d-none">
+                <div
+                  class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
+                  <div class="mb-2">
+                    <h5 class="mb-1">
+                      Tracking Number:
+                      <span id="tracking-id-display" class="fw-bold"></span>
+                    </h5>
+                    <p class="mb-0">
+                      Status: <span id="shipment-status" class="badge"></span>
+                    </p>
+                  </div>
+                  <div class="text-end mb-2">
+                    <p class="mb-1">
+                      <i class="fas fa-truck-clock me-1"></i>
+                      Estimated Delivery:
+                      <span id="eta-display" class="fw-bold"></span>
+                    </p>
+                    <p class="mb-0 text-muted">
+                      <small>
+                        <i class="fas fa-sync-alt me-1"></i>
+                        Last Updated: <span id="last-updated"></span>
+                      </small>
+                    </p>
+                  </div>
+                </div>
+
+                <div class="progress mb-4" style="height: 25px">
+                  <div
+                    id="progress-bar"
+                    class="progress-bar progress-bar-striped progress-bar-animated"
+                    role="progressbar"
+                    aria-valuenow="0"
+                    aria-valuemin="0"
+                    aria-valuemax="100"></div>
+                </div>
+
+                <!-- Map Container -->
+                <div id="map-container" class="mb-4">
+                  <h5 class="mb-3">
+                    <i class="fas fa-map-marked-alt me-2"></i>Shipment Location
+                  </h5>
+                  <div id="map"></div>
+                  <div class="map-legend">
+                    <span class="badge bg-primary me-2"
+                      ><i class="fas fa-user"></i> Sender</span
+                    >
+                    <span class="badge bg-success me-2"
+                      ><i class="fas fa-box"></i> Package</span
+                    >
+                    <span class="badge bg-danger"
+                      ><i class="fas fa-home"></i> Receiver</span
+                    >
+                  </div>
+                </div>
+
+                <div class="row">
+                  <div class="col-md-6 mb-4">
+                    <h5 class="mb-3">
+                      <i class="fas fa-info-circle me-2"></i>Shipment Details
+                    </h5>
+                    <div class="row">
+                      <div class="col-md-6 mb-3">
+                        <div class="card h-100">
+                          <div class="card-header bg-light">
+                            <i class="fas fa-user me-2"></i>Sender Information
+                          </div>
+                          <div class="card-body">
+                            <p class="mb-1" id="sender-name"></p>
+                            <p class="mb-1" id="sender-phone"></p>
+                            <p class="mb-0" id="sender-address"></p>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="col-md-6 mb-3">
+                        <div class="card h-100">
+                          <div class="card-header bg-light">
+                            <i class="fas fa-user me-2"></i>Receiver Information
+                          </div>
+                          <div class="card-body">
+                            <p class="mb-1" id="receiver-name"></p>
+                            <p class="mb-1" id="receiver-phone"></p>
+                            <p class="mb-0" id="receiver-address"></p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- In your HTML, update the Package Details card -->
+                  <div class="col-12 mb-3">
+                    <div class="card">
+                      <div class="card-header bg-light">
+                        <i class="fas fa-box me-2"></i>Package Details
+                      </div>
+                      <div class="card-body">
+                        <div class="row">
+                          <div class="col-md-4">
+                            <p class="mb-1"><strong>Description:</strong></p>
+                            <p id="package-description">Not specified</p>
+                          </div>
+                          <div class="col-md-4">
+                            <p class="mb-1"><strong>Weight:</strong></p>
+                            <p id="package-weight">Not specified</p>
+                          </div>
+                          <div class="col-md-4">
+                            <p class="mb-1"><strong>Dimensions:</strong></p>
+                            <p id="package-dimensions">Not specified</p>
+                          </div>
+                        </div>
+                        <div class="row mt-2">
+                          <div class="col-md-6">
+                            <p class="mb-1"><strong>Contents:</strong></p>
+                            <p id="package-contents">Not specified</p>
+                          </div>
+                          <div class="col-md-6">
+                            <p class="mb-1">
+                              <strong>Remark:</strong>
+                            </p>
+                            <p id="package-instructions">None</p>
+                          </div>
+                        </div>
+                        <!-- Add this new row for the package image -->
+                        <div
+                          class="row mt-3"
+                          id="package-image-container"
+                          style="display: none">
+                          <div class="col-12">
+                            <p class="mb-2"><strong>Package Image:</strong></p>
+                            <img
+                              id="package-image"
+                              src=""
+                              class="img-fluid rounded border"
+                              style="max-height: 200px" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="col-md-6 mb-4">
+                    <h5 class="mb-3">
+                      <i class="fas fa-history me-2"></i>Tracking History
+                    </h5>
+                    <div class="timeline" id="timeline">
+                      <!-- Timeline items will be added here dynamically -->
+                    </div>
+                  </div>
+                </div>
+
+                <div class="alert alert-info mt-4">
+                  <i class="fas fa-info-circle me-2"></i>
+                  <strong>Need help?</strong> Contact our customer support at
+                  <a href="mailto:support@swiftship.com"
+                    >support@swiftship.com</a
+                  >
+                  or call <a href="tel:+18005551234">1-800-555-1234</a>.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="bg-dark text-white py-4 mt-5">
+      <div class="container">
+        <div class="row">
+          <div class="col-md-4 mb-3">
+            <h5><i class="fas fa-shipping-fast me-2"></i>SwiftShip</h5>
+            <p>Fast, reliable delivery services worldwide.</p>
+          </div>
+          <div class="col-md-4 mb-3">
+            <h5>Quick Links</h5>
+            <ul class="list-unstyled">
+              <li><a href="index.html" class="text-white">Home</a></li>
+              <li><a href="#" class="text-white">Services</a></li>
+              <li><a href="#" class="text-white">Tracking</a></li>
+              <li><a href="#" class="text-white">Contact</a></li>
+            </ul>
+          </div>
+          <div class="col-md-4 mb-3">
+            <h5>Contact Us</h5>
+            <ul class="list-unstyled">
+              <li><i class="fas fa-phone me-2"></i> 1-800-555-1234</li>
+              <li>
+                <i class="fas fa-envelope me-2"></i> support@swiftship.com
+              </li>
+              <li>
+                <i class="fas fa-map-marker-alt me-2"></i> 123 Delivery St,
+                Logistics City
+              </li>
+            </ul>
+          </div>
+        </div>
+        <hr class="my-4 bg-light" />
+        <div class="text-center">
+          <p class="mb-0">&copy; 2023 SwiftShip. All rights reserved.</p>
+        </div>
+      </div>
+    </footer>
+
+    <!-- JavaScript Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+    <!-- Leaflet JS (OpenStreetMap) -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Your Tracking Script -->
+    <script src="js/tracking.js"></script>
+    <script>
+      // Check URL for tracking ID parameter
+      document.addEventListener("DOMContentLoaded", function () {
+        const urlParams = new URLSearchParams(window.location.search);
+        const trackingId = urlParams.get("id");
+
+        if (trackingId) {
+          trackPackage(trackingId);
+        }
+
+        // Focus tracking input if empty
+        const trackingInput = document.getElementById("tracking-id");
+        if (trackingInput && !trackingInput.value) {
+          trackingInput.focus();
+        }
+      });
+    </script>
+  </body>
+</html>

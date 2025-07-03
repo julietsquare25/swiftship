@@ -1,0 +1,1929 @@
+// Firebase configuration and initialization
+const firebaseConfig = {
+  apiKey: "AIzaSyAr-aFO9xK7oVAgg3Kny0bUHRoTwC1bHLw",
+  authDomain: "doordashconsole.firebaseapp.com",
+  databaseURL: "https://doordashconsole-default-rtdb.firebaseio.com",
+  projectId: "doordashconsole",
+  storageBucket: "doordashconsole.firebasestorage.app",
+  messagingSenderId: "843944254913",
+  appId: "1:843944254913:web:88198ddc9b45e850972340",
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const auth = firebase.auth();
+
+// Initialize sidebar state
+function initSidebar() {
+  if (window.innerWidth <= 768) {
+    document.getElementById("sidebar").classList.remove("active");
+    document.querySelector(".sidebar-toggle").style.display = "block";
+  } else {
+    document.getElementById("sidebar").classList.add("active");
+    document.querySelector(".sidebar-toggle").style.display = "none";
+  }
+}
+function initCharts() {
+  db.ref("shipments")
+    .once("value")
+    .then((snapshot) => {
+      const shipments = snapshot.val();
+      if (!shipments) return;
+
+      // Count status distribution
+      const statusCounts = {
+        Delivered: 0,
+        "In Transit": 0,
+        Processing: 0,
+        "Out for Delivery": 0,
+        Returned: 0,
+      };
+
+      // Count volume per month
+      const monthlyCounts = Array(12).fill(0); // Jan-Dec
+
+      // Count activity by hour segment
+      const hourlyCounts = Array(6).fill(0); // 6 segments in 24 hours
+
+      Object.values(shipments).forEach((s) => {
+        const status = s.status || "Processing";
+        const time = new Date(s.history?.[0]?.time || s.eta);
+        const hour = time.getHours();
+        const month = time.getMonth(); // 0 = Jan
+
+        if (statusCounts.hasOwnProperty(status)) {
+          statusCounts[status]++;
+        }
+
+        if (!isNaN(month)) {
+          monthlyCounts[month]++;
+        }
+
+        // Bucket hour into 6 parts: 0-4, 4-8, ..., 20-24
+        const segment = Math.floor(hour / 4);
+        if (segment >= 0 && segment < hourlyCounts.length) {
+          hourlyCounts[segment]++;
+        }
+      });
+
+      // Create charts with computed data
+      renderStatusChart(statusCounts);
+      renderVolumeChart(monthlyCounts);
+      renderActivityChart(hourlyCounts);
+    });
+}
+
+function renderStatusChart(data) {
+  const ctx = document.getElementById("statusChart");
+  if (!ctx) return;
+
+  new Chart(ctx.getContext("2d"), {
+    type: "doughnut",
+    data: {
+      labels: Object.keys(data),
+      datasets: [
+        {
+          data: Object.values(data),
+          backgroundColor: [
+            "#28a745",
+            "#17a2b8",
+            "#6c757d",
+            "#007bff",
+            "#ffc107",
+          ],
+        },
+      ],
+    },
+  });
+}
+
+function renderVolumeChart(monthlyData) {
+  const ctx = document.getElementById("volumeChart");
+  if (!ctx) return;
+
+  new Chart(ctx.getContext("2d"), {
+    type: "bar",
+    data: {
+      labels: [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ],
+      datasets: [
+        {
+          label: "Shipments",
+          data: monthlyData,
+          backgroundColor: "#007bff",
+        },
+      ],
+    },
+    options: {
+      scales: {
+        y: { beginAtZero: true },
+      },
+    },
+  });
+}
+
+function renderActivityChart(hourData) {
+  const ctx = document.getElementById("activityChart");
+  if (!ctx) return;
+
+  new Chart(ctx.getContext("2d"), {
+    type: "line",
+    data: {
+      labels: ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"],
+      datasets: [
+        {
+          label: "Shipment Updates",
+          data: hourData,
+          borderColor: "#007bff",
+          backgroundColor: "rgba(0, 123, 255, 0.1)",
+          tension: 0.1,
+          fill: true,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+    },
+  });
+}
+
+// Show section
+function showSection(id) {
+  document
+    .querySelectorAll(".section")
+    .forEach((s) => (s.style.display = "none"));
+  document.getElementById(id).style.display = "block";
+  document
+    .querySelectorAll("#sidebar a")
+    .forEach((a) => a.classList.remove("active"));
+  document.querySelector(`#sidebar a[href="#${id}"]`).classList.add("active");
+
+  // Close sidebar on mobile after selection
+  if (window.innerWidth <= 768) {
+    document.getElementById("sidebar").classList.remove("active");
+  }
+}
+
+// Toggle sidebar
+document
+  .querySelector(".sidebar-toggle")
+  .addEventListener("click", function () {
+    document.getElementById("sidebar").classList.toggle("active");
+  });
+
+// Initialize on load
+window.addEventListener("load", function () {
+  initSidebar();
+  initCharts();
+
+  // Show dashboard by default if logged in
+  auth.onAuthStateChanged((user) => {
+    if (user) {
+      document.getElementById("auth").style.display = "none";
+      document.getElementById("admin-panel").style.display = "block";
+      document.getElementById("user-info").style.display = "flex";
+      loadShipments();
+      updateDashboardStats();
+      showSection("dashboard");
+    }
+  });
+});
+
+// Handle window resize
+window.addEventListener("resize", initSidebar);
+
+function login() {
+  const email = document.getElementById("email").value;
+  const pass = document.getElementById("password").value;
+  if (!email || !pass) {
+    document.getElementById("auth-msg").innerText = "Please fill in all fields";
+    return;
+  }
+
+  document.getElementById("auth-msg").innerText = "Logging in...";
+  auth
+    .signInWithEmailAndPassword(email, pass)
+    .then(() => {
+      document.getElementById("auth").style.display = "none";
+      document.getElementById("admin-panel").style.display = "block";
+      document.getElementById("user-info").style.display = "flex";
+      loadShipments();
+      updateDashboardStats();
+    })
+    .catch((err) => {
+      document.getElementById("auth-msg").innerText = err.message;
+    });
+}
+
+function logout() {
+  auth.signOut().then(() => location.reload());
+}
+
+function sendReset() {
+  const emailInput = document.getElementById("reset-email");
+  const email = emailInput.value.trim();
+  const resetMsg = document.getElementById("reset-msg");
+
+  // Clear previous messages
+  resetMsg.innerText = "";
+  resetMsg.className = "mt-2"; // Reset class
+
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!email) {
+    resetMsg.innerText = "Please enter your email address";
+    resetMsg.classList.add("text-danger");
+    emailInput.focus();
+    return;
+  }
+
+  if (!emailRegex.test(email)) {
+    resetMsg.innerText = "Please enter a valid email address";
+    resetMsg.classList.add("text-danger");
+    emailInput.focus();
+    return;
+  }
+
+  // Show loading state
+  resetMsg.innerText = "Sending password reset link...";
+  resetMsg.classList.add("text-info");
+
+  // Disable button during operation
+  const resetBtn = document.querySelector(
+    "#settings button[onclick='sendReset()']"
+  );
+  const originalBtnText = resetBtn.innerHTML;
+  resetBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+  resetBtn.disabled = true;
+
+  auth
+    .sendPasswordResetEmail(email)
+    .then(() => {
+      resetMsg.innerText =
+        "Password reset link sent successfully! Check your email.";
+      resetMsg.classList.remove("text-info");
+      resetMsg.classList.add("text-success");
+
+      // Clear the input
+      emailInput.value = "";
+
+      // Auto-hide message after 5 seconds
+      setTimeout(() => {
+        resetMsg.innerText = "";
+        resetMsg.className = "mt-2";
+      }, 5000);
+    })
+    .catch((err) => {
+      let errorMessage = "Error sending reset link: ";
+
+      // Handle specific Firebase errors
+      switch (err.code) {
+        case "auth/user-not-found":
+          errorMessage += "No account found with this email";
+          break;
+        case "auth/invalid-email":
+          errorMessage += "Invalid email address format";
+          break;
+        case "auth/too-many-requests":
+          errorMessage += "Too many attempts. Please try again later";
+          break;
+        default:
+          errorMessage += err.message;
+      }
+
+      resetMsg.innerText = errorMessage;
+      resetMsg.classList.remove("text-info");
+      resetMsg.classList.add("text-danger");
+    })
+    .finally(() => {
+      // Restore button state
+      resetBtn.innerHTML = originalBtnText;
+      resetBtn.disabled = false;
+    });
+}
+
+function updateDashboardStats() {
+  db.ref("shipments")
+    .once("value")
+    .then((snapshot) => {
+      const data = snapshot.val();
+      if (!data) return;
+
+      const counts = {
+        total: 0,
+        delivered: 0,
+        transit: 0,
+        issues: 0,
+      };
+
+      Object.values(data).forEach((shipment) => {
+        counts.total++;
+        if (shipment.status === "Delivered") counts.delivered++;
+        if (shipment.status === "In Transit") counts.transit++;
+        if (shipment.status === "Returned") counts.issues++;
+      });
+
+      document.getElementById("total-shipments").textContent = counts.total;
+      document.getElementById("delivered-shipments").textContent =
+        counts.delivered;
+      document.getElementById("transit-shipments").textContent = counts.transit;
+      document.getElementById("issue-shipments").textContent = counts.issues;
+    });
+}
+
+function loadShipments() {
+  const table = document.querySelector("#shipments-table tbody");
+  db.ref("shipments").on("value", (snapshot) => {
+    const data = snapshot.val();
+    if (!data) {
+      table.innerHTML =
+        '<tr><td colspan="10" class="text-center">No shipments found</td></tr>';
+      return;
+    }
+    window.shipments = data;
+    renderShipments(data);
+    updateDashboardStats();
+  });
+}
+
+function renderShipments(data) {
+  const table = document.querySelector("#shipments-table tbody");
+  table.innerHTML = "";
+
+  if (!data || Object.keys(data).length === 0) {
+    table.innerHTML =
+      '<tr><td colspan="10" class="text-center">No shipments found</td></tr>';
+    return;
+  }
+
+  Object.entries(data).forEach(([id, s]) => {
+    const statusBadge = getStatusBadge(s.status);
+    const progressBar = `<div class="progress" style="height: 20px;">
+        <div class="progress-bar" role="progressbar" style="width: ${s.progress || 0}%"
+          aria-valuenow="${s.progress || 0}" aria-valuemin="0" aria-valuemax="100">
+          ${s.progress || 0}%
+        </div>
+      </div>`;
+
+    const row = document.createElement("tr");
+    row.innerHTML = `
+        <td><strong>${id}</strong></td>
+        <td>${statusBadge}</td>
+        <td>${s.location || "-"}</td>
+        <td>${s.eta || "-"}</td>
+        <td>${progressBar}</td>
+        <td><small>${s.sender?.name || "-"}<br>${s.sender?.phone || "-"}</small></td>
+        <td><small>${s.receiver?.name || "-"}<br>${s.receiver?.phone || "-"}</small></td>
+        <td><small>${s.package?.type || "-"}<br>${s.package?.weight || "-"}kg</small></td>
+        <td>${s.image ? `<img src="${s.image}" class="img-thumbnail">` : '<span class="text-muted">No image</span>'}</td>
+        <td>
+          <button class="btn btn-sm btn-danger" onclick="deleteShipment('${id}')">
+            <i class="fas fa-trash"></i>
+          </button>
+        </td>
+      `;
+    table.appendChild(row);
+  });
+}
+
+function getStatusBadge(status) {
+  const statusClasses = {
+    Processing: "bg-secondary",
+    "In Transit": "bg-primary",
+    "Out for Delivery": "bg-info text-dark",
+    Delivered: "bg-success",
+    Returned: "bg-warning text-dark",
+  };
+  return `<span class="badge ${statusClasses[status] || "bg-dark"}">${status}</span>`;
+}
+
+function deleteShipment(id) {
+  if (confirm(`Are you sure you want to delete shipment ${id}?`)) {
+    db.ref("shipments/" + id)
+      .remove()
+      .then(() => {
+        showToast("Shipment deleted successfully", "success");
+      })
+      .catch((err) => {
+        showToast("Error deleting shipment: " + err.message, "danger");
+      });
+  }
+}
+
+function filterShipments(query) {
+  if (!query) {
+    renderShipments(window.shipments);
+    return;
+  }
+
+  const filtered = {};
+  query = query.toLowerCase();
+
+  for (let key in window.shipments) {
+    const shipment = window.shipments[key];
+    if (
+      key.toLowerCase().includes(query) ||
+      (shipment.status && shipment.status.toLowerCase().includes(query)) ||
+      (shipment.location && shipment.location.toLowerCase().includes(query)) ||
+      (shipment.sender?.name &&
+        shipment.sender.name.toLowerCase().includes(query)) ||
+      (shipment.receiver?.name &&
+        shipment.receiver.name.toLowerCase().includes(query))
+    ) {
+      filtered[key] = shipment;
+    }
+  }
+  renderShipments(filtered);
+}
+
+function filterByStatus(status) {
+  if (!status) {
+    renderShipments(window.shipments);
+    return;
+  }
+
+  const filtered = {};
+  for (let key in window.shipments) {
+    if (window.shipments[key].status === status) {
+      filtered[key] = window.shipments[key];
+    }
+  }
+  renderShipments(filtered);
+}
+
+function resetFilters() {
+  renderShipments(window.shipments);
+  document.querySelector('#shipments input[type="text"]').value = "";
+  document.querySelector("#shipments select").value = "";
+}
+
+function save() {
+  const id = document.getElementById("id").value;
+  if (!id) {
+    document.getElementById("msg").innerText = "Tracking ID is required";
+    return;
+  }
+
+  const shipmentData = {
+    id: id,
+    status: document.getElementById("status").value,
+    location: document.getElementById("location").value,
+    eta: document.getElementById("eta").value,
+    progress: parseInt(document.getElementById("progress").value) || 0,
+    sender: {
+      name: document.getElementById("senderName").value,
+      phone: document.getElementById("senderPhone").value,
+      address: document.getElementById("senderAddress").value,
+    },
+    receiver: {
+      name: document.getElementById("receiverName").value,
+      phone: document.getElementById("receiverPhone").value,
+      address: document.getElementById("receiverAddress").value,
+    },
+    package: {
+      type: document.getElementById("packageType").value,
+      contents: document.getElementById("contents").value,
+      weight: parseFloat(document.getElementById("weight").value) || 0,
+    },
+    createdAt: new Date().toISOString(),
+  };
+
+  db.ref("shipments/" + id)
+    .set(shipmentData)
+    .then(() => {
+      document.getElementById("msg").innerText =
+        "Shipment created successfully!";
+      // Clear form
+      document
+        .querySelectorAll("#create input, #create select")
+        .forEach((el) => {
+          if (el.id !== "status" && el.id !== "packageType") el.value = "";
+        });
+      setTimeout(() => {
+        document.getElementById("msg").innerText = "";
+      }, 3000);
+    })
+    .catch((err) => {
+      document.getElementById("msg").innerText = "Error: " + err.message;
+    });
+}
+
+function updateShipment() {
+  const id = document.getElementById("update-id").value;
+  if (!id) {
+    document.getElementById("update-msg").innerText = "Tracking ID is required";
+    return;
+  }
+
+  const updates = {};
+  if (document.getElementById("new-status").value) {
+    updates.status = document.getElementById("new-status").value;
+  }
+  if (document.getElementById("new-location").value) {
+    updates.location = document.getElementById("new-location").value;
+  }
+  if (document.getElementById("new-progress").value) {
+    updates.progress = parseInt(document.getElementById("new-progress").value);
+  }
+  if (document.getElementById("image-url").value) {
+    updates.image = document.getElementById("image-url").value;
+  }
+  updates.updatedAt = new Date().toISOString();
+
+  if (Object.keys(updates).length === 0) {
+    document.getElementById("update-msg").innerText = "No changes to update";
+    return;
+  }
+
+  db.ref("shipments/" + id)
+    .update(updates)
+    .then(() => {
+      document.getElementById("update-msg").innerText =
+        "Shipment updated successfully!";
+      // Clear form
+      document
+        .querySelectorAll("#update input, #update select")
+        .forEach((el) => {
+          el.value = "";
+        });
+      setTimeout(() => {
+        document.getElementById("update-msg").innerText = "";
+      }, 3000);
+    })
+    .catch((err) => {
+      document.getElementById("update-msg").innerText = "Error: " + err.message;
+    });
+}
+
+function showToast(message, type = "success") {
+  // Create toast element if it doesn't exist
+  let toast = document.getElementById("toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "toast";
+    toast.className = `toast align-items-center text-white bg-${type} border-0 position-fixed bottom-0 end-0 m-3`;
+    toast.setAttribute("role", "alert");
+    toast.setAttribute("aria-live", "assertive");
+    toast.setAttribute("aria-atomic", "true");
+    toast.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body">${message}</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+      `;
+    document.body.appendChild(toast);
+  } else {
+    toast.className = `toast align-items-center text-white bg-${type} border-0 position-fixed bottom-0 end-0 m-3`;
+    toast.querySelector(".toast-body").textContent = message;
+  }
+
+  // Show the toast
+  const bsToast = new bootstrap.Toast(toast);
+  bsToast.show();
+
+  // Remove toast after it hides
+  toast.addEventListener("hidden.bs.toast", () => {
+    toast.remove();
+  });
+}
+
+// Firebase References
+const settingsRef = db.ref("settings");
+const statusRef = db.ref("statuses");
+const emailTemplatesRef = db.ref("emailTemplates");
+const shippingServicesRef = db.ref("shippingServices");
+const usersRef = db.ref("users");
+const permissionsRef = db.ref("permissions");
+
+// Initialize all settings
+function initializeSettings() {
+  loadGeneralSettings();
+  loadStatusSettings();
+  loadNotificationSettings();
+  loadEmailTemplates();
+  loadShippingServices();
+  loadApiSettings();
+  loadUserManagement();
+}
+
+// ===================== GENERAL SETTINGS =====================
+// Update this in your initializeSettings() function
+function loadGeneralSettings() {
+  settingsRef.child("general").on("value", (snapshot) => {
+    const data = snapshot.val() || {};
+
+    // Update company name in logo
+    const logoText = document.querySelector(".logo span");
+    if (logoText) {
+      logoText.textContent = data.companyName || "SwiftShip";
+    }
+
+    // Update company logo
+    const logoIcon = document.querySelector(".logo i");
+    const logoContainer = document.querySelector(".logo");
+
+    if (data.companyLogoUrl) {
+      // Replace icon with image if logo URL exists
+      if (logoIcon) logoIcon.style.display = "none";
+
+      let logoImg = logoContainer.querySelector("img");
+      if (!logoImg) {
+        logoImg = document.createElement("img");
+        logoContainer.prepend(logoImg);
+      }
+      logoImg.src = data.companyLogoUrl;
+      logoImg.style.height = "24px"; // Adjust as needed
+      logoImg.style.marginRight = "10px";
+      logoImg.alt = data.companyName + " Logo";
+    } else {
+      // Show default icon if no logo
+      const logoImg = logoContainer.querySelector("img");
+      if (logoImg) logoImg.remove();
+      if (logoIcon) logoIcon.style.display = "inline-block";
+    }
+  });
+}
+function renderBusinessHours(hours) {
+  const days = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+  ];
+  const tbody = document.getElementById("business-hours");
+  tbody.innerHTML = "";
+
+  days.forEach((day) => {
+    const dayHours = hours[day.toLowerCase()] || {
+      open: "09:00",
+      close: "17:00",
+      closed: false,
+    };
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${day}</td>
+      <td><input type="time" class="form-control form-control-sm" id="${day.toLowerCase()}-open" value="${dayHours.open}"></td>
+      <td><input type="time" class="form-control form-control-sm" id="${day.toLowerCase()}-close" value="${dayHours.close}"></td>
+      <td>
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="${day.toLowerCase()}-closed" ${dayHours.closed ? "checked" : ""}>
+          <label class="form-check-label" for="${day.toLowerCase()}-closed">Closed</label>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function saveCompanyInfo() {
+  const updates = {
+    companyName: document.getElementById("company-name").value,
+    contactEmail: document.getElementById("contact-email").value,
+    contactPhone: document.getElementById("contact-phone").value,
+  };
+
+  settingsRef
+    .child("general")
+    .update(updates)
+    .then(() => showToast("Company info saved successfully", "success"))
+    .catch((err) =>
+      showToast("Error saving company info: " + err.message, "danger")
+    );
+}
+
+function saveTrackingSettings() {
+  const updates = {
+    trackingUrl: document.getElementById("tracking-url").value,
+    enableCustomerLogin: document.getElementById("enable-customer-login")
+      .checked,
+    showEstimatedDelivery: document.getElementById("show-estimated-delivery")
+      .checked,
+  };
+
+  settingsRef
+    .child("general")
+    .update(updates)
+    .then(() => showToast("Tracking settings saved successfully", "success"))
+    .catch((err) =>
+      showToast("Error saving tracking settings: " + err.message, "danger")
+    );
+}
+
+function saveMapSettings() {
+  const updates = {
+    googleMapsKey: document.getElementById("google-maps-key").value,
+    mapZoomLevel: parseInt(document.getElementById("map-zoom-level").value),
+    showRoute: document.getElementById("show-route").checked,
+  };
+
+  settingsRef
+    .child("general")
+    .update(updates)
+    .then(() => showToast("Map settings saved successfully", "success"))
+    .catch((err) =>
+      showToast("Error saving map settings: " + err.message, "danger")
+    );
+}
+
+function saveBusinessHours() {
+  const days = [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+  ];
+  const businessHours = {};
+
+  days.forEach((day) => {
+    businessHours[day] = {
+      open: document.getElementById(`${day}-open`).value,
+      close: document.getElementById(`${day}-close`).value,
+      closed: document.getElementById(`${day}-closed`).checked,
+    };
+  });
+
+  settingsRef
+    .child("general/businessHours")
+    .set(businessHours)
+    .then(() => showToast("Business hours saved successfully", "success"))
+    .catch((err) =>
+      showToast("Error saving business hours: " + err.message, "danger")
+    );
+}
+
+// ===================== STATUS MANAGEMENT =====================
+function loadStatusSettings() {
+  statusRef.on("value", (snapshot) => {
+    const statuses = snapshot.val() || {
+      Processing: {
+        color: "#6c757d",
+        type: "pre-shipment",
+        notify: true,
+      },
+      "In Transit": {
+        color: "#007bff",
+        type: "in-transit",
+        notify: true,
+      },
+      "Out for Delivery": {
+        color: "#17a2b8",
+        type: "delivery",
+        notify: true,
+      },
+      Delivered: {
+        color: "#28a745",
+        type: "post-delivery",
+        notify: true,
+      },
+      Returned: { color: "#ffc107", type: "exception", notify: true },
+    };
+
+    window.statusOptions = statuses;
+    renderStatusList(statuses);
+    renderStatusWorkflow(statuses);
+    updateStatusSelects();
+  });
+}
+
+function renderStatusList(statuses) {
+  const tbody = document.getElementById("status-list");
+  tbody.innerHTML = "";
+
+  Object.entries(statuses).forEach(([status, config]) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td><span class="badge" style="background-color: ${config.color}">${status}</span></td>
+      <td><input type="color" value="${config.color}" class="form-control form-control-color" disabled></td>
+      <td>${config.type.replace("-", " ")}</td>
+      <td>
+        <button class="btn btn-sm btn-outline-primary me-1" onclick="editStatus('${status}')">
+          <i class="fas fa-edit"></i>
+        </button>
+        <button class="btn btn-sm btn-outline-danger" onclick="removeStatus('${status}')">
+          <i class="fas fa-trash"></i>
+        </button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function renderStatusWorkflow(statuses) {
+  const workflowList = document.getElementById("status-workflow");
+  workflowList.innerHTML = "";
+
+  // Get workflow order from settings or use default
+  settingsRef
+    .child("statusWorkflow")
+    .once("value")
+    .then((snapshot) => {
+      const workflowOrder = snapshot.val() || Object.keys(statuses);
+
+      workflowOrder.forEach((status) => {
+        if (statuses[status]) {
+          const li = document.createElement("li");
+          li.className =
+            "list-group-item d-flex justify-content-between align-items-center";
+          li.draggable = true;
+          li.dataset.status = status;
+          li.innerHTML = `
+          <span class="badge" style="background-color: ${statuses[status].color}">${status}</span>
+          <i class="fas fa-grip-lines"></i>
+        `;
+          workflowList.appendChild(li);
+        }
+      });
+
+      // Make the list sortable
+      new Sortable(workflowList, {
+        animation: 150,
+        ghostClass: "sortable-ghost",
+        onEnd: function () {
+          // Reorder is handled in saveStatusWorkflow
+        },
+      });
+    });
+}
+
+function updateStatusSelects() {
+  const selects = document.querySelectorAll(
+    "select[id='status'], select[id='new-status']"
+  );
+
+  selects.forEach((select) => {
+    const currentValue = select.value;
+    select.innerHTML = "";
+
+    Object.keys(window.statusOptions).forEach((status) => {
+      const option = document.createElement("option");
+      option.value = status;
+      option.textContent = status;
+      select.appendChild(option);
+    });
+
+    if (currentValue && window.statusOptions[currentValue]) {
+      select.value = currentValue;
+    }
+  });
+}
+
+function addNewStatus() {
+  const name = document.getElementById("new-status-name").value.trim();
+  const color = document.getElementById("new-status-color").value;
+  const type = document.getElementById("new-status-type").value;
+  const notify = document.getElementById("new-status-notify").checked;
+
+  if (!name) {
+    showToast("Please enter a status name", "danger");
+    return;
+  }
+
+  const statusData = {
+    color: color,
+    type: type,
+    notify: notify,
+  };
+
+  statusRef
+    .child(name)
+    .set(statusData)
+    .then(() => {
+      showToast("Status added successfully", "success");
+      document.getElementById("new-status-name").value = "";
+    })
+    .catch((err) => {
+      showToast("Error adding status: " + err.message, "danger");
+    });
+}
+
+function editStatus(statusName) {
+  const newName = prompt("Enter new name for status:", statusName);
+  if (newName && newName !== statusName) {
+    statusRef
+      .child(statusName)
+      .once("value")
+      .then((snapshot) => {
+        const data = snapshot.val();
+        statusRef
+          .child(newName)
+          .set(data)
+          .then(() => statusRef.child(statusName).remove())
+          .then(() => showToast("Status renamed successfully", "success"))
+          .catch((err) =>
+            showToast("Error renaming status: " + err.message, "danger")
+          );
+      });
+  }
+}
+
+function removeStatus(statusName) {
+  if (!confirm(`Are you sure you want to remove the "${statusName}" status?`)) {
+    return;
+  }
+
+  statusRef
+    .child(statusName)
+    .remove()
+    .then(() => showToast("Status removed successfully", "success"))
+    .catch((err) =>
+      showToast("Error removing status: " + err.message, "danger")
+    );
+}
+
+function saveStatusWorkflow() {
+  const workflowList = document.getElementById("status-workflow");
+  const workflowOrder = Array.from(workflowList.children).map(
+    (li) => li.dataset.status
+  );
+
+  settingsRef
+    .child("statusWorkflow")
+    .set(workflowOrder)
+    .then(() => showToast("Status workflow saved successfully", "success"))
+    .catch((err) =>
+      showToast("Error saving workflow: " + err.message, "danger")
+    );
+}
+
+// ===================== NOTIFICATION SETTINGS =====================
+function loadNotificationSettings() {
+  settingsRef.child("notifications").on("value", (snapshot) => {
+    const data = snapshot.val() || {};
+
+    // Email settings
+    if (data.email) {
+      document.getElementById("enable-email-notifications").checked =
+        data.email.enabled !== false;
+      document.getElementById("sender-email").value =
+        data.email.senderEmail || "";
+      document.getElementById("sender-name").value =
+        data.email.senderName || "";
+      document.getElementById("smtp-server").value =
+        data.email.smtpServer || "";
+      document.getElementById("smtp-port").value = data.email.smtpPort || "587";
+      document.getElementById("smtp-security").value =
+        data.email.smtpSecurity || "tls";
+      document.getElementById("smtp-username").value =
+        data.email.smtpUsername || "";
+      document.getElementById("smtp-password").value =
+        data.email.smtpPassword || "";
+    }
+
+    // SMS settings
+    if (data.sms) {
+      document.getElementById("enable-sms-notifications").checked =
+        data.sms.enabled || false;
+      document.getElementById("sms-provider").value =
+        data.sms.provider || "twilio";
+      document.getElementById("sms-api-key").value = data.sms.apiKey || "";
+      document.getElementById("sms-api-secret").value =
+        data.sms.apiSecret || "";
+      document.getElementById("sms-sender").value = data.sms.sender || "";
+    }
+
+    // Notification triggers
+    if (data.triggers) {
+      renderNotificationTriggers(data.triggers);
+    }
+  });
+}
+
+function renderNotificationTriggers(triggers) {
+  const defaultTriggers = {
+    shipment_created: { email: true, sms: false, push: false },
+    status_updated: { email: true, sms: true, push: true },
+    delivery_successful: { email: true, sms: true, push: true },
+    delivery_failed: { email: true, sms: true, push: true },
+    exception_occurred: { email: true, sms: true, push: true },
+  };
+
+  const mergedTriggers = { ...defaultTriggers, ...(triggers || {}) };
+  const tbody = document.getElementById("notification-triggers");
+  tbody.innerHTML = "";
+
+  Object.entries(mergedTriggers).forEach(([event, channels]) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${event.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}</td>
+      <td class="text-center">
+        <input type="checkbox" class="form-check-input" id="${event}-email" ${channels.email ? "checked" : ""}>
+      </td>
+      <td class="text-center">
+        <input type="checkbox" class="form-check-input" id="${event}-sms" ${channels.sms ? "checked" : ""}>
+      </td>
+      <td class="text-center">
+        <input type="checkbox" class="form-check-input" id="${event}-push" ${channels.push ? "checked" : ""}>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function saveEmailSettings() {
+  const emailSettings = {
+    enabled: document.getElementById("enable-email-notifications").checked,
+    senderEmail: document.getElementById("sender-email").value,
+    senderName: document.getElementById("sender-name").value,
+    smtpServer: document.getElementById("smtp-server").value,
+    smtpPort: document.getElementById("smtp-port").value,
+    smtpSecurity: document.getElementById("smtp-security").value,
+    smtpUsername: document.getElementById("smtp-username").value,
+    smtpPassword: document.getElementById("smtp-password").value,
+  };
+
+  settingsRef
+    .child("notifications/email")
+    .set(emailSettings)
+    .then(() => showToast("Email settings saved successfully", "success"))
+    .catch((err) =>
+      showToast("Error saving email settings: " + err.message, "danger")
+    );
+}
+
+function saveSmsSettings() {
+  const smsSettings = {
+    enabled: document.getElementById("enable-sms-notifications").checked,
+    provider: document.getElementById("sms-provider").value,
+    apiKey: document.getElementById("sms-api-key").value,
+    apiSecret: document.getElementById("sms-api-secret").value,
+    sender: document.getElementById("sms-sender").value,
+  };
+
+  settingsRef
+    .child("notifications/sms")
+    .set(smsSettings)
+    .then(() => showToast("SMS settings saved successfully", "success"))
+    .catch((err) =>
+      showToast("Error saving SMS settings: " + err.message, "danger")
+    );
+}
+
+function saveNotificationTriggers() {
+  const triggers = {};
+  const rows = document.getElementById("notification-triggers").rows;
+
+  for (let i = 0; i < rows.length; i++) {
+    const cells = rows[i].cells;
+    const event = cells[0].textContent
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "_");
+    triggers[event] = {
+      email: cells[1].querySelector("input").checked,
+      sms: cells[2].querySelector("input").checked,
+      push: cells[3].querySelector("input").checked,
+    };
+  }
+
+  settingsRef
+    .child("notifications/triggers")
+    .set(triggers)
+    .then(() =>
+      showToast("Notification triggers saved successfully", "success")
+    )
+    .catch((err) =>
+      showToast("Error saving triggers: " + err.message, "danger")
+    );
+}
+
+// ===================== EMAIL TEMPLATES =====================
+function loadEmailTemplates() {
+  emailTemplatesRef.on("value", (snapshot) => {
+    const templates = snapshot.val() || {
+      shipment_created: {
+        subject: "Your shipment has been created - {tracking_number}",
+        content:
+          "<p>Hello {customer_name},</p><p>Your shipment has been created with tracking number: {tracking_number}</p>",
+      },
+      status_updated: {
+        subject: "Shipment status update - {tracking_number}",
+        content:
+          "<p>Hello {customer_name},</p><p>Your shipment status has been updated to: {status}</p>",
+      },
+    };
+
+    window.emailTemplates = templates;
+    renderTemplateList(templates);
+  });
+}
+
+function renderTemplateList(templates) {
+  const list = document.getElementById("template-list");
+  list.innerHTML = "";
+
+  Object.keys(templates).forEach((templateName) => {
+    const button = document.createElement("button");
+    button.className = "list-group-item list-group-item-action";
+    button.textContent = templateName
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (l) => l.toUpperCase());
+    button.onclick = () => loadTemplateEditor(templateName);
+    list.appendChild(button);
+  });
+}
+
+function loadTemplateEditor(templateName) {
+  const template = window.emailTemplates[templateName];
+  document.getElementById("template-name").value = templateName
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (l) => l.toUpperCase());
+  document.getElementById("template-subject").value = template.subject;
+  document.getElementById("template-content").value = template.content;
+  document.getElementById("save-template-btn").disabled = false;
+  document.getElementById("save-template-btn").onclick = () =>
+    saveTemplate(templateName);
+}
+
+function saveTemplate(templateName) {
+  const updatedTemplate = {
+    subject: document.getElementById("template-subject").value,
+    content: document.getElementById("template-content").value,
+  };
+
+  emailTemplatesRef
+    .child(templateName)
+    .set(updatedTemplate)
+    .then(() => {
+      showToast("Template saved successfully", "success");
+      window.emailTemplates[templateName] = updatedTemplate;
+    })
+    .catch((err) =>
+      showToast("Error saving template: " + err.message, "danger")
+    );
+}
+
+// ===================== SHIPPING SERVICES =====================
+function loadShippingServices() {
+  shippingServicesRef.on("value", (snapshot) => {
+    const services = snapshot.val() || {
+      fedex: {
+        name: "FedEx",
+        trackingUrl:
+          "https://www.fedex.com/tracking?tracknumbers={tracking_number}",
+        active: true,
+      },
+      ups: {
+        name: "UPS",
+        trackingUrl: "https://www.ups.com/track?tracknum={tracking_number}",
+        active: true,
+      },
+    };
+
+    window.shippingServices = services;
+    renderShippingServicesList(services);
+  });
+}
+
+function renderShippingServicesList(services) {
+  const tbody = document.getElementById("shipping-services-list");
+  tbody.innerHTML = "";
+
+  Object.entries(services).forEach(([id, service]) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td><img src="https://logo.clearbit.com/${service.name.toLowerCase()}.com" width="30" height="30" onerror="this.src='https://via.placeholder.com/30'"></td>
+      <td>${service.name}</td>
+      <td>
+        <span class="badge ${service.active ? "bg-success" : "bg-secondary"}">
+          ${service.active ? "Active" : "Inactive"}
+        </span>
+      </td>
+      <td>
+        <button class="btn btn-sm btn-outline-primary me-1" onclick="editShippingService('${id}')">
+          <i class="fas fa-edit"></i>
+        </button>
+        <button class="btn btn-sm btn-outline-danger" onclick="removeShippingService('${id}')">
+          <i class="fas fa-trash"></i>
+        </button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function addShippingService() {
+  const name = document.getElementById("new-carrier-name").value.trim();
+  const trackingUrl = document.getElementById("new-carrier-url").value.trim();
+  const active = document.getElementById("new-carrier-active").checked;
+
+  if (!name || !trackingUrl) {
+    showToast("Please fill in all required fields", "danger");
+    return;
+  }
+
+  const id = name.toLowerCase().replace(/\s+/g, "_");
+  const serviceData = {
+    name: name,
+    trackingUrl: trackingUrl,
+    active: active,
+  };
+
+  shippingServicesRef
+    .child(id)
+    .set(serviceData)
+    .then(() => {
+      showToast("Shipping service added successfully", "success");
+      document.getElementById("new-carrier-name").value = "";
+      document.getElementById("new-carrier-url").value = "";
+    })
+    .catch((err) =>
+      showToast("Error adding service: " + err.message, "danger")
+    );
+}
+
+function editShippingService(serviceId) {
+  const newName = prompt(
+    "Enter new name for service:",
+    window.shippingServices[serviceId].name
+  );
+  if (newName && newName !== window.shippingServices[serviceId].name) {
+    const newId = newName.toLowerCase().replace(/\s+/g, "_");
+    shippingServicesRef
+      .child(serviceId)
+      .once("value")
+      .then((snapshot) => {
+        const data = snapshot.val();
+        shippingServicesRef
+          .child(newId)
+          .set(data)
+          .then(() => shippingServicesRef.child(serviceId).remove())
+          .then(() => showToast("Service renamed successfully", "success"))
+          .catch((err) =>
+            showToast("Error renaming service: " + err.message, "danger")
+          );
+      });
+  }
+}
+
+function removeShippingService(serviceId) {
+  if (
+    !confirm(
+      `Are you sure you want to remove the "${window.shippingServices[serviceId].name}" service?`
+    )
+  ) {
+    return;
+  }
+
+  shippingServicesRef
+    .child(serviceId)
+    .remove()
+    .then(() => showToast("Service removed successfully", "success"))
+    .catch((err) =>
+      showToast("Error removing service: " + err.message, "danger")
+    );
+}
+
+// ===================== API INTEGRATION =====================
+function loadApiSettings() {
+  settingsRef.child("api").on("value", (snapshot) => {
+    const data = snapshot.val() || {};
+    document.getElementById("api-base-url").value =
+      data.baseUrl || "https://api.shiptrackpro.com/v1";
+    document.getElementById("api-key").value = data.apiKey || "";
+    document.getElementById("api-secret").value = data.apiSecret || "";
+    document.getElementById("webhook-url").value = data.webhookUrl || "";
+    document.getElementById("webhook-secret").value = data.webhookSecret || "";
+    document.getElementById("webhook-active").checked =
+      data.webhookActive !== false;
+
+    // Set webhook events
+    if (data.webhookEvents) {
+      const select = document.getElementById("webhook-events");
+      Array.from(select.options).forEach((option) => {
+        option.selected = data.webhookEvents.includes(option.value);
+      });
+    }
+  });
+}
+
+function toggleApiKeyVisibility() {
+  const input = document.getElementById("api-key");
+  input.type = input.type === "password" ? "text" : "password";
+}
+
+function toggleApiSecretVisibility() {
+  const input = document.getElementById("api-secret");
+  input.type = input.type === "password" ? "text" : "password";
+}
+
+function generateNewApiKey() {
+  if (
+    !confirm(
+      "Generating a new API key will invalidate the current one. Continue?"
+    )
+  ) {
+    return;
+  }
+
+  const newKey =
+    "sk_live_" +
+    Math.random().toString(36).substring(2) +
+    Math.random().toString(36).substring(2);
+  settingsRef
+    .child("api/apiKey")
+    .set(newKey)
+    .then(() => {
+      document.getElementById("api-key").value = newKey;
+      showToast("New API key generated", "success");
+    })
+    .catch((err) =>
+      showToast("Error generating key: " + err.message, "danger")
+    );
+}
+
+function generateNewApiSecret() {
+  if (
+    !confirm(
+      "Generating a new API secret will invalidate the current one. Continue?"
+    )
+  ) {
+    return;
+  }
+
+  const newSecret =
+    Math.random().toString(36).substring(2) +
+    Math.random().toString(36).substring(2);
+  settingsRef
+    .child("api/apiSecret")
+    .set(newSecret)
+    .then(() => {
+      document.getElementById("api-secret").value = newSecret;
+      showToast("New API secret generated", "success");
+    })
+    .catch((err) =>
+      showToast("Error generating secret: " + err.message, "danger")
+    );
+}
+
+function saveWebhookSettings() {
+  const webhookUrl = document.getElementById("webhook-url").value;
+  const webhookSecret = document.getElementById("webhook-secret").value;
+  const webhookActive = document.getElementById("webhook-active").checked;
+
+  const select = document.getElementById("webhook-events");
+  const webhookEvents = Array.from(select.selectedOptions).map(
+    (option) => option.value
+  );
+
+  const updates = {
+    webhookUrl: webhookUrl,
+    webhookSecret: webhookSecret,
+    webhookActive: webhookActive,
+    webhookEvents: webhookEvents,
+  };
+
+  settingsRef
+    .child("api")
+    .update(updates)
+    .then(() => showToast("Webhook settings saved successfully", "success"))
+    .catch((err) =>
+      showToast("Error saving webhook settings: " + err.message, "danger")
+    );
+}
+
+// ===================== USER MANAGEMENT =====================
+function loadUserManagement() {
+  // Load users
+  usersRef.on("value", (snapshot) => {
+    const users = snapshot.val() || {};
+    renderUsersList(users);
+  });
+
+  // Load permissions
+  permissionsRef.on("value", (snapshot) => {
+    const permissions = snapshot.val() || {
+      admin: {
+        create_shipments: true,
+        edit_shipments: true,
+        delete_shipments: true,
+        manage_settings: true,
+        manage_users: true,
+      },
+      manager: {
+        create_shipments: true,
+        edit_shipments: true,
+        delete_shipments: false,
+        manage_settings: false,
+        manage_users: false,
+      },
+      operator: {
+        create_shipments: true,
+        edit_shipments: true,
+        delete_shipments: false,
+        manage_settings: false,
+        manage_users: false,
+      },
+      viewer: {
+        create_shipments: false,
+        edit_shipments: false,
+        delete_shipments: false,
+        manage_settings: false,
+        manage_users: false,
+      },
+    };
+
+    renderPermissionsTable(permissions);
+  });
+}
+
+function renderUsersList(users) {
+  const tbody = document.getElementById("users-list");
+  tbody.innerHTML = "";
+
+  Object.entries(users).forEach(([userId, user]) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${user.name}</td>
+      <td>${user.email}</td>
+      <td>${user.role.charAt(0).toUpperCase() + user.role.slice(1)}</td>
+      <td>
+        <span class="badge ${user.active ? "bg-success" : "bg-secondary"}">
+          ${user.active ? "Active" : "Inactive"}
+        </span>
+      </td>
+      <td>
+        <button class="btn btn-sm btn-outline-primary me-1" onclick="editUser('${userId}')">
+          <i class="fas fa-edit"></i>
+        </button>
+        <button class="btn btn-sm btn-outline-danger" onclick="deleteUser('${userId}')">
+          <i class="fas fa-trash"></i>
+        </button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function renderPermissionsTable(permissions) {
+  const tbody = document.getElementById("permissions-table");
+  tbody.innerHTML = "";
+
+  const permissionNames = {
+    create_shipments: "Create Shipments",
+    edit_shipments: "Edit Shipments",
+    delete_shipments: "Delete Shipments",
+    manage_settings: "Manage Settings",
+    manage_users: "Manage Users",
+  };
+
+  Object.entries(permissionNames).forEach(([permissionId, permissionName]) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${permissionName}</td>
+      <td class="text-center"><input type="checkbox" class="form-check-input admin-perm" data-perm="${permissionId}" ${permissions.admin[permissionId] ? "checked" : ""}></td>
+      <td class="text-center"><input type="checkbox" class="form-check-input manager-perm" data-perm="${permissionId}" ${permissions.manager[permissionId] ? "checked" : ""}></td>
+      <td class="text-center"><input type="checkbox" class="form-check-input operator-perm" data-perm="${permissionId}" ${permissions.operator[permissionId] ? "checked" : ""}></td>
+      <td class="text-center"><input type="checkbox" class="form-check-input viewer-perm" data-perm="${permissionId}" ${permissions.viewer[permissionId] ? "checked" : ""}></td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function addNewUser() {
+  const name = document.getElementById("new-user-name").value.trim();
+  const email = document.getElementById("new-user-email").value.trim();
+  const role = document.getElementById("new-user-role").value;
+  const password = document.getElementById("new-user-password").value;
+
+  if (!name || !email || !password) {
+    showToast("Please fill in all required fields", "danger");
+    return;
+  }
+
+  if (password.length < 8) {
+    showToast("Password must be at least 8 characters", "danger");
+    return;
+  }
+
+  // Create user in Firebase Auth
+  auth
+    .createUserWithEmailAndPassword(email, password)
+    .then((userCredential) => {
+      const userId = userCredential.user.uid;
+
+      // Save user data to database
+      const userData = {
+        name: name,
+        email: email,
+        role: role,
+        active: true,
+        createdAt: new Date().toISOString(),
+      };
+
+      return usersRef.child(userId).set(userData);
+    })
+    .then(() => {
+      showToast("User added successfully", "success");
+      document.getElementById("new-user-name").value = "";
+      document.getElementById("new-user-email").value = "";
+      document.getElementById("new-user-password").value = "";
+    })
+    .catch((err) => showToast("Error adding user: " + err.message, "danger"));
+}
+
+function editUser(userId) {
+  const newRole = prompt(
+    "Enter new role (admin, manager, operator, viewer):",
+    "operator"
+  );
+  if (
+    newRole &&
+    ["admin", "manager", "operator", "viewer"].includes(newRole.toLowerCase())
+  ) {
+    usersRef
+      .child(`${userId}/role`)
+      .set(newRole.toLowerCase())
+      .then(() => showToast("User role updated successfully", "success"))
+      .catch((err) =>
+        showToast("Error updating user: " + err.message, "danger")
+      );
+  }
+}
+
+function deleteUser(userId) {
+  if (!confirm("Are you sure you want to delete this user?")) {
+    return;
+  }
+
+  // Delete from database
+  usersRef
+    .child(userId)
+    .remove()
+    .then(() => {
+      // Try to delete from Auth (this requires admin privileges)
+      return auth.deleteUser(userId);
+    })
+    .then(() => showToast("User deleted successfully", "success"))
+    .catch((err) => showToast("Error deleting user: " + err.message, "danger"));
+}
+
+function saveRolePermissions() {
+  const permissions = {
+    admin: {},
+    manager: {},
+    operator: {},
+    viewer: {},
+  };
+
+  document.querySelectorAll(".admin-perm").forEach((checkbox) => {
+    permissions.admin[checkbox.dataset.perm] = checkbox.checked;
+  });
+
+  document.querySelectorAll(".manager-perm").forEach((checkbox) => {
+    permissions.manager[checkbox.dataset.perm] = checkbox.checked;
+  });
+
+  document.querySelectorAll(".operator-perm").forEach((checkbox) => {
+    permissions.operator[checkbox.dataset.perm] = checkbox.checked;
+  });
+
+  document.querySelectorAll(".viewer-perm").forEach((checkbox) => {
+    permissions.viewer[checkbox.dataset.perm] = checkbox.checked;
+  });
+
+  permissionsRef
+    .set(permissions)
+    .then(() => showToast("Role permissions saved successfully", "success"))
+    .catch((err) =>
+      showToast("Error saving permissions: " + err.message, "danger")
+    );
+}
+
+// ===================== UTILITY FUNCTIONS =====================
+function showToast(message, type = "success") {
+  const toastContainer =
+    document.getElementById("toast-container") || createToastContainer();
+  const toast = document.createElement("div");
+
+  toast.className = `toast show align-items-center text-white bg-${type} border-0`;
+  toast.setAttribute("role", "alert");
+  toast.setAttribute("aria-live", "assertive");
+  toast.setAttribute("aria-atomic", "true");
+  toast.innerHTML = `
+    <div class="d-flex">
+      <div class="toast-body">${message}</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+  `;
+
+  toastContainer.appendChild(toast);
+
+  // Auto-remove after 5 seconds
+  setTimeout(() => {
+    toast.classList.remove("show");
+    setTimeout(() => toast.remove(), 300);
+  }, 5000);
+}
+
+function createToastContainer() {
+  const container = document.createElement("div");
+  container.id = "toast-container";
+  container.className = "position-fixed bottom-0 end-0 p-3";
+  container.style.zIndex = "1100";
+  document.body.appendChild(container);
+  return container;
+}
+
+// Initialize everything when the page loads
+window.addEventListener("load", function () {
+  initializeSettings();
+
+  // Make sure to call this when showing the settings section
+  document
+    .querySelector('a[href="#settings"]')
+    .addEventListener("click", initializeSettings);
+});
+
+// Initialize map
+function initLiveMap() {
+  const map = L.map("live-map").setView([51.505, -0.09], 3);
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  }).addTo(map);
+
+  // Add real-time shipment markers
+  db.ref("shipments").on("value", (snapshot) => {
+    // Clear existing markers
+    map.eachLayer((layer) => {
+      if (layer instanceof L.Marker) map.removeLayer(layer);
+    });
+
+    // Add new markers
+    snapshot.forEach((shipment) => {
+      const data = shipment.val();
+      if (data.latitude && data.longitude) {
+        const marker = L.marker([data.latitude, data.longitude]).addTo(map);
+        marker.bindPopup(`
+          <b>${shipment.key}</b><br>
+          Status: ${data.status}<br>
+          Destination: ${data.receiver?.address || "Unknown"}
+        `);
+
+        // Custom icon based on status
+        if (data.status === "Delivered") {
+          marker.setIcon(
+            L.icon({
+              iconUrl:
+                "https://cdn0.iconfinder.com/data/icons/small-n-flat/24/678111-map-marker-512.png",
+              iconSize: [25, 41],
+            })
+          );
+        }
+      }
+    });
+  });
+}
+
+// Call this in your dashboard initialization
+initLiveMap();
+
+function setupNotifications() {
+  const notificationList = document.getElementById("notification-list");
+  const countElement = document.getElementById("notification-count");
+
+  db.ref("notifications")
+    .orderByChild("timestamp")
+    .limitToLast(10)
+    .on("value", (snapshot) => {
+      notificationList.innerHTML = "";
+      let unreadCount = 0;
+
+      snapshot.forEach((notification) => {
+        const data = notification.val();
+        const item = document.createElement("div");
+        item.className = `notification-item ${data.read ? "" : "unread"}`;
+        item.innerHTML = `
+        <strong>${data.title}</strong><br>
+        <small>${formatTime(data.timestamp)}</small>
+        <p>${data.message}</p>
+      `;
+        item.onclick = () => markAsRead(notification.key);
+        notificationList.prepend(item);
+
+        if (!data.read) unreadCount++;
+      });
+
+      countElement.textContent = unreadCount;
+    });
+}
+
+function markAsRead(notificationId) {
+  db.ref(`notifications/${notificationId}/read`).set(true);
+}
+
+function formatTime(timestamp) {
+  return new Date(timestamp).toLocaleString();
+}
+
+// Example notification trigger
+function triggerDelayNotification(shipmentId) {
+  db.ref("notifications").push({
+    title: "Delivery Delay Detected",
+    message: `Shipment ${shipmentId} is behind schedule`,
+    timestamp: new Date().toISOString(),
+    read: false,
+    type: "delay",
+  });
+}
+
+// Update showSection function to handle new sections
+function showSection(id) {
+  // Hide all sections first
+  document.querySelectorAll(".section").forEach((s) => {
+    s.style.display = "none";
+  });
+
+  // Special case for settings tabs
+  if (id === "settings") {
+    document.getElementById("settings").style.display = "block";
+    // Activate first tab
+    const firstTab = document.querySelector("#settingsTabs button:first-child");
+    const firstTabPane = document.querySelector(
+      "#settingsTabsContent .tab-pane:first-child"
+    );
+    document
+      .querySelectorAll("#settingsTabs .nav-link")
+      .forEach((tab) => tab.classList.remove("active"));
+    document
+      .querySelectorAll("#settingsTabsContent .tab-pane")
+      .forEach((pane) => pane.classList.remove("show", "active"));
+    firstTab.classList.add("active");
+    firstTabPane.classList.add("show", "active");
+  } else {
+    // Show requested section
+    document.getElementById(id).style.display = "block";
+  }
+
+  // Update active state in sidebar
+  document.querySelectorAll("#sidebar a").forEach((a) => {
+    a.classList.remove("active");
+  });
+  document.querySelector(`#sidebar a[href="#${id}"]`).classList.add("active");
+
+  // Initialize specific sections when shown
+  switch (id) {
+    case "dashboard":
+      initLiveMap();
+      updateDashboardStats();
+      break;
+    case "reports":
+      initCharts();
+      break;
+    case "maps":
+      initLiveMap();
+      break;
+    case "users":
+      loadUserManagement();
+      break;
+    case "api":
+      loadApiSettings();
+      break;
+  }
+
+  // Close sidebar on mobile after selection
+  if (window.innerWidth <= 768) {
+    document.getElementById("sidebar").classList.remove("active");
+  }
+}
+
+// Initialize the new sections in your load event
+window.addEventListener("load", function () {
+  initSidebar();
+
+  // Create new section containers if they don't exist
+  const main = document.getElementById("main");
+
+  // Maps Section
+  if (!document.getElementById("maps")) {
+    const mapsSection = document.createElement("div");
+    mapsSection.id = "maps";
+    mapsSection.className = "section";
+    mapsSection.style.display = "none";
+    mapsSection.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <h4><i class="fas fa-map-marked-alt"></i> Live Shipment Tracking</h4>
+        </div>
+        <div class="card-body">
+          <div id="live-map" style="height: 600px; border-radius: 8px;"></div>
+        </div>
+      </div>
+    `;
+    main.appendChild(mapsSection);
+  }
+
+  // Users Section (extracted from Settings)
+  if (!document.getElementById("users")) {
+    const usersSection = document.createElement("div");
+    usersSection.id = "users";
+    usersSection.className = "section";
+    usersSection.style.display = "none";
+    usersSection.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fas fa-users-cog"></i> User Management</h3>
+        </div>
+        <div class="card-body">
+          <!-- Content will be loaded dynamically -->
+          <div id="user-management-content"></div>
+        </div>
+      </div>
+    `;
+    main.appendChild(usersSection);
+  }
+
+  // API Section (extracted from Settings)
+  if (!document.getElementById("api")) {
+    const apiSection = document.createElement("div");
+    apiSection.id = "api";
+    apiSection.className = "section";
+    apiSection.style.display = "none";
+    apiSection.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fas fa-plug"></i> API Integration</h3>
+        </div>
+        <div class="card-body">
+          <!-- Content will be loaded dynamically -->
+          <div id="api-integration-content"></div>
+        </div>
+      </div>
+    `;
+    main.appendChild(apiSection);
+  }
+
+  // Initialize other components
+  initCharts();
+  setupNotifications();
+
+  // Show dashboard by default if logged in
+  auth.onAuthStateChanged((user) => {
+    if (user) {
+      document.getElementById("auth").style.display = "none";
+      document.getElementById("admin-panel").style.display = "block";
+      document.getElementById("user-info").style.display = "flex";
+      loadShipments();
+      updateDashboardStats();
+      showSection("dashboard");
+    }
+  });
+});
+
+// Update loadUserManagement function
+function loadUserManagement() {
+  const contentDiv = document.getElementById("user-management-content");
+  contentDiv.innerHTML = document.getElementById("user-management").innerHTML;
+
+  // Load users
+  usersRef.on("value", (snapshot) => {
+    const users = snapshot.val() || {};
+    renderUsersList(users);
+  });
+}
+
+// Update loadApiSettings function
+function loadApiSettings() {
+  const contentDiv = document.getElementById("api-integration-content");
+  contentDiv.innerHTML = document.getElementById("api-integration").innerHTML;
+
+  // Load API settings
+  settingsRef.child("api").on("value", (snapshot) => {
+    const data = snapshot.val() || {};
+    document.getElementById("api-base-url").value =
+      data.baseUrl || "https://api.shiptrackpro.com/v1";
+    document.getElementById("api-key").value = data.apiKey || "";
+    document.getElementById("api-secret").value = data.apiSecret || "";
+    document.getElementById("webhook-url").value = data.webhookUrl || "";
+    document.getElementById("webhook-secret").value = data.webhookSecret || "";
+    document.getElementById("webhook-active").checked =
+      data.webhookActive !== false;
+
+    if (data.webhookEvents) {
+      const select = document.getElementById("webhook-events");
+      Array.from(select.options).forEach((option) => {
+        option.selected = data.webhookEvents.includes(option.value);
+      });
+    }
+  });
+}
