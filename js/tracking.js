@@ -274,6 +274,9 @@ function displayTrackingResults(trackingNumber, shipment) {
     document.getElementById("package-instructions").textContent =
       shipment.package.instructions || "None";
 
+    document.getElementById("package-location").textContent =
+      shipment.package.instructions || "None";
+
     // Handle package image
     const imageContainer = document.getElementById("package-image-container");
     const packageImage = document.getElementById("image-url");
