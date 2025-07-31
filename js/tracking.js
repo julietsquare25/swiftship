@@ -232,6 +232,9 @@ function displayTrackingResults(trackingNumber, shipment) {
   }
   document.getElementById("eta-display").textContent = shipment.eta;
 
+  // Update Shipment location
+  document.getElementById("location").textContent = shipment.location;
+
   // Update dates
   document.getElementById("last-updated").textContent = formatDate(
     shipment.updatedAt || shipment.createdAt
